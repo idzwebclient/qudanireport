@@ -1,23 +1,32 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata, Viewport } from 'next';
+import { ServiceWorker } from '../components/service-worker';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: "Qudani Rekod",
-  description: "Report harian dan rekod modal bulanan.",
+  title: 'Rekod Modal',
+  description: 'Report harian dan rekod modal bulanan.',
+  applicationName: 'Rekod Modal',
+  appleWebApp: { capable: true, title: 'Rekod Modal', statusBarStyle: 'default' },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }, { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
+    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180' }],
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#ffffff',
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ms">
-      <body className="antialiased">{children}</body>
+      <body>
+        {children}
+        <ServiceWorker />
+      </body>
     </html>
   );
 }
