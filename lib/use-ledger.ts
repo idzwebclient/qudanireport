@@ -82,13 +82,15 @@ export function useLedger(repo: Repo, userId: string) {
     setLoadError('');
     try {
       if (!(await flush())) throw new TypeError('failed to fetch');
-      const branches = await repo.listBranches();
-      const usable = branches.filter(b => !b.archived_at);
+      // The usual branch is fetched alongside the branch list instead of after it.
       const current = snapshotRef.current.activeId;
+      const loadBranch = (id: string) => Promise.all([repo.listTransactions(id), repo.listMonths(id), repo.listOpexCategories(id)]);
+      const [branches, early] = await Promise.all([repo.listBranches(), current ? loadBranch(current) : null]);
+      const usable = branches.filter(b => !b.archived_at);
       const activeId = usable.some(b => b.id === current) ? current : usable[0]?.id ?? '';
       const data = { ...snapshotRef.current.data };
       if (activeId) {
-        const [txns, months, categories] = await Promise.all([repo.listTransactions(activeId), repo.listMonths(activeId), repo.listOpexCategories(activeId)]);
+        const [txns, months, categories] = activeId === current && early ? early : await loadBranch(activeId);
         data[activeId] = { txns, months, categories };
       }
       commitSnapshot({ branches, data, activeId });
@@ -108,6 +110,8 @@ export function useLedger(repo: Repo, userId: string) {
       outboxRef.current = pending;
       setOutbox(pending);
       setOnline(navigator.onLine);
+      // Saved data shows at once and updates quietly. Only a first visit has to wait for the network.
+      if (saved.branches.length) setReady(true);
       await refresh();
       setReady(true);
     };

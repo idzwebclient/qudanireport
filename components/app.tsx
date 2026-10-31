@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { AlertTriangle, CheckCircle2, CloudOff, History, Landmark, LayoutDashboard, Loader2, PencilLine, Plus, Settings, Wallet } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { money } from '../lib/ledger';
@@ -7,11 +8,15 @@ import { createClient } from '../lib/supabase/client';
 import { supabaseRepo, type Repo } from '../lib/repo';
 import { useLedger, type SyncState } from '../lib/use-ledger';
 import { Onboarding } from './onboarding';
-import { DashboardView } from './dashboard';
 import { TodayView } from './today';
 import { RecordsView } from './records';
 import { MonthView } from './month';
 import { SettingsView } from './settings';
+
+const DashboardView = dynamic(() => import('./dashboard').then(m => m.DashboardView), {
+  ssr: false,
+  loading: () => <p className="empty">Memuatkan Dashboard…</p>,
+});
 
 export type Tab = 'dashboard' | 'harian' | 'sejarah' | 'bulanan' | 'tetapan';
 const TABS: [Tab, string, LucideIcon][] = [

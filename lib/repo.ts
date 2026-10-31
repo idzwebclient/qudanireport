@@ -37,10 +37,17 @@ function check<T>(result: { data: T; error: { message: string } | null }): T {
 export function supabaseRepo(db: SupabaseClient, userId: string): Repo {
   return {
     async listBranches() {
-      const memberships = check(await db.from('branch_members').select('branch_id, role').eq('user_id', userId)) as { branch_id: string; role: Role }[];
-      if (!memberships.length) return [];
-      const rows = check(await db.from('branches').select('id, name, opening_balance_sen, opening_date, opening_pl_sen, opening_pl_date, archived_at').in('id', memberships.map(m => m.branch_id)).order('name')) as Omit<Branch, 'role'>[];
-      return rows.map(b => ({ ...b, role: memberships.find(m => m.branch_id === b.id)!.role }));
+      // RLS already limits branches to the user's own, so both can be read in one round trip.
+      const [memberResult, branchResult] = await Promise.all([
+        db.from('branch_members').select('branch_id, role').eq('user_id', userId),
+        db.from('branches').select('id, name, opening_balance_sen, opening_date, opening_pl_sen, opening_pl_date, archived_at').order('name'),
+      ]);
+      const memberships = check(memberResult) as { branch_id: string; role: Role }[];
+      const rows = check(branchResult) as Omit<Branch, 'role'>[];
+      return rows.flatMap(b => {
+        const role = memberships.find(m => m.branch_id === b.id)?.role;
+        return role ? [{ ...b, role }] : [];
+      });
     },
     async createBranch(name, openingSen) {
       return check(await db.rpc('create_branch', { branch_name: name, opening_sen: openingSen })) as string;
