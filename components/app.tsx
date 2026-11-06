@@ -92,7 +92,12 @@ export function App({ repo, email, userId }: { repo: Repo; email: string; userId
   const currentPeriod = periodOf(todayKL());
   const purchases = summarisePeriod(branch.opening_balance_sen, ledger.days, currentPeriod).purchases;
   // Same figure as the Dashboard's "terkumpul": carried up to the current month.
-  const cumulative = profitFor(ledger.months, currentPeriod, branch).final;
+  const profit = profitFor(ledger.months, currentPeriod, branch);
+  const cumulative = profit.final;
+  // This month on its own, without losses carried in from earlier months.
+  const monthLabel = `${!profit.filled ? 'Untung / rugi' : profit.own < 0 ? 'Rugi' : 'Untung'} bersih ${periodShortLabel(currentPeriod)}`;
+  const monthValue = profit.filled ? money(profit.own) : 'Belum isi';
+  const monthTone = profit.filled && profit.own < 0 ? 'negative' : profit.filled && profit.own > 0 ? 'positive' : undefined;
   const branchPicker = usable.length > 1 ? (
     <select className="branch-select" aria-label="Pilih cawangan" value={branch.id} onChange={e => void ledger.switchBranch(e.target.value)}>
       {usable.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -109,6 +114,7 @@ export function App({ repo, email, userId }: { repo: Repo; email: string; userId
           <strong className={balance < 0 ? 'negative' : undefined}>{money(balance)}</strong>
           <dl>
             <div><dt>Belian {periodShortLabel(currentPeriod)}</dt><dd>{money(purchases)}</dd></div>
+            <div><dt>{monthLabel}</dt><dd className={monthTone}>{monthValue}</dd></div>
             <div><dt>{cumulative < 0 ? 'Rugi' : 'Untung'} bersih terkumpul</dt><dd className={cumulative < 0 ? 'negative' : cumulative > 0 ? 'positive' : undefined}>{money(cumulative)}</dd></div>
           </dl>
         </div>
@@ -144,6 +150,7 @@ export function App({ repo, email, userId }: { repo: Repo; email: string; userId
         <dl className="top-stats mobile-only">
           <div><dt>Baki modal</dt><dd className={balance < 0 ? 'negative' : undefined}>{money(balance)}</dd></div>
           <div><dt>Belian {periodShortLabel(currentPeriod)}</dt><dd>{money(purchases)}</dd></div>
+          <div><dt>{monthLabel}</dt><dd className={monthTone}>{monthValue}</dd></div>
           <div><dt>{cumulative < 0 ? 'Rugi' : 'Untung'} terkumpul</dt><dd className={cumulative < 0 ? 'negative' : cumulative > 0 ? 'positive' : undefined}>{money(cumulative)}</dd></div>
         </dl>
 
