@@ -140,6 +140,13 @@ export function App({ repo, email, userId }: { repo: Repo; email: string; userId
           <SyncBadge state={ledger.sync} count={ledger.pendingCount} />
         </header>
 
+        {/* The sidebar's summary, for phones where the sidebar is hidden. */}
+        <dl className="top-stats mobile-only">
+          <div><dt>Baki modal</dt><dd className={balance < 0 ? 'negative' : undefined}>{money(balance)}</dd></div>
+          <div><dt>Belian {periodShortLabel(currentPeriod)}</dt><dd>{money(purchases)}</dd></div>
+          <div><dt>{cumulative < 0 ? 'Rugi' : 'Untung'} terkumpul</dt><dd className={cumulative < 0 ? 'negative' : cumulative > 0 ? 'positive' : undefined}>{money(cumulative)}</dd></div>
+        </dl>
+
         <main className="content">
           {ledger.loadError && <div className="alert alert-error" role="alert">{ledger.loadError}</div>}
           {ledger.failed.map(({ txn, failed }) => (

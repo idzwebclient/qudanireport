@@ -11,6 +11,7 @@ import { PeriodNav } from './period-nav';
 
 const COLOR = { main: '#0b8a5f', second: '#c8650a', third: '#5b6fd6', fourth: '#c03b6e', fifth: '#1f2937', grid: '#ececec', axis: '#6b7280' };
 const TREND_LINES = [['Belian', COLOR.main], ['Untung kasar', COLOR.third], ['Kos marketing', COLOR.second], ['OPEX', COLOR.fourth], ['Untung bersih', COLOR.fifth]] as const;
+const TREND_SHORT: Record<string, string> = { 'Untung kasar': 'Kasar', 'Kos marketing': 'Marketing', 'Untung bersih': 'Bersih' };
 const axis = { tickLine: false, axisLine: false, tick: { fontSize: 12, fill: COLOR.axis } };
 const MARGIN = { top: 6, right: 4, left: -8, bottom: 0 };
 const TONE_ICON = { good: CheckCircle2, warn: AlertTriangle, info: Info };
@@ -103,7 +104,8 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
   const previousAll = selected.map(p => shiftPeriod(p, -selected.length));
   const name = isMonth ? periodShortLabel(period) : quarter ? `Q${quarter}` : String(year);
   const previousName = isMonth ? periodShortLabel(previousAll[0]) : quarter ? (quarter === 1 ? `Q4 ${year - 1}` : `Q${quarter - 1}`) : String(year - 1);
-  const rangeLabel = isMonth ? periodLabel(period) : `${name} ${quarter ? year : ''} · ${periodLabel(selected[0]).split(' – ')[0]} ${periodRange(selected[0]).start.slice(0, 4)} – ${periodLabel(selected.at(-1)!).split(' – ')[1]}`;
+  const rangeTitle = quarter ? `${name} ${year}` : name;
+  const rangeDates = `${periodLabel(selected[0]).split(' – ')[0]} ${periodRange(selected[0]).start.slice(0, 4)} – ${periodLabel(selected.at(-1)!).split(' – ')[1]}`;
 
   const columns: Column[] = isMonth
     ? [{ key: period, label: periodShortLabel(period), periods: [period] }]
@@ -227,7 +229,7 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
         {isMonth ? <PeriodNav period={period} onChange={setPeriod} /> : (
           <div className="datebar">
             <button className="icon-btn" aria-label="Tahun sebelumnya" onClick={() => setYear(year - 1)}><ChevronLeft size={20} /></button>
-            <div className="date-picker"><span>{rangeLabel}</span></div>
+            <div className="date-picker"><span>{rangeTitle}<small className="range-dates"> · {rangeDates}</small></span></div>
             <button className="icon-btn" aria-label="Tahun seterusnya" onClick={() => setYear(year + 1)}><ChevronRight size={20} /></button>
           </div>
         )}
@@ -381,7 +383,11 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
           ) : (
             <section className="card stack">
               <div className="segmented trend-tabs" role="group" aria-label="Metrik graf">
-                {TREND_LINES.map(([key]) => <button key={key} aria-pressed={trendKey === key} onClick={() => setTrendKey(key)}>{key}</button>)}
+                {TREND_LINES.map(([key]) => (
+                  <button key={key} aria-pressed={trendKey === key} aria-label={key} onClick={() => setTrendKey(key)}>
+                    <span className="label-wide">{key}</span><span className="label-narrow">{TREND_SHORT[key] ?? key}</span>
+                  </button>
+                ))}
               </div>
               <figure className="mini-chart">
                 <figcaption>{trendKey} setiap bulan (RM)</figcaption>

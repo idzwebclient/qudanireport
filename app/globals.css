@@ -61,6 +61,11 @@ button:disabled { cursor: default; opacity: .55; }
 .branch-select { min-width: 0; max-width: 60%; height: 40px; padding: 0 8px; border: 1px solid var(--line); border-radius: 10px; background-color: var(--surface); font-weight: 600; }
 
 .sidebar { display: none; }
+.top-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.top-stats div { min-width: 0; }
+.top-stats dt { font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-stats dd { margin: 0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label-wide { display: none; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
 .brand-ink { color: var(--brand); }
 
@@ -284,9 +289,8 @@ input:disabled, textarea:disabled { background: var(--surface-2); color: var(--m
 .verdict.verdict-warn { background: var(--warn-soft); }
 .verdict-cell svg { vertical-align: -2px; }
 .trend-box { height: 260px; }
-.trend-tabs { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); }
-.trend-tabs button { min-height: 40px; font-size: 13px; }
-@media (min-width: 760px) { .trend-tabs { grid-template-columns: repeat(5, 1fr); } }
+.trend-tabs { grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); overflow-x: auto; scrollbar-width: none; }
+.trend-tabs button { min-height: 40px; padding: 0 7px; font-size: 13px; white-space: nowrap; }
 .mini-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .mini-chart { margin: 0; min-width: 0; }
 .mini-chart figcaption { margin-bottom: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
@@ -304,15 +308,17 @@ input:disabled, textarea:disabled { background: var(--surface-2); color: var(--m
 .target-main strong { font-size: clamp(16px, 4.8vw, 22px); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
 .target-main small { font-size: 12px; opacity: .85; }
 .view-tabs button { min-height: 44px; }
-.headline-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
-.headline-grid .kpi strong { font-size: 26px; }
+.headline-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.headline-grid .kpi:last-child { grid-column: 1 / -1; }
+.headline-grid .kpi strong { font-size: clamp(17px, 5vw, 26px); }
 .cell-soft { color: var(--muted); }
 .how summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted); }
 .how p { margin-top: 8px; }
 .verdict b { font-size: 14px; }
 .range-bar { flex-direction: column; align-items: stretch; padding: 8px; gap: 4px; }
-.range-tabs { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); background: none; padding: 0; }
-.range-tabs button { min-height: 40px; }
+.range-tabs { grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); overflow-x: auto; scrollbar-width: none; background: none; padding: 0; }
+.range-tabs button { min-height: 40px; padding: 0 12px; white-space: nowrap; }
+.range-dates { display: none; }
 .range-tabs button[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); box-shadow: none; }
 .range-bar .datebar { flex: none; }
 .report-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -464,6 +470,11 @@ input:disabled, textarea:disabled { background: var(--surface-2); color: var(--m
   .records .cell-chevron { display: table-cell; width: 34px; padding-left: 0; color: var(--muted); }
   .range-tabs { grid-template-columns: repeat(6, 1fr); }
   .headline-grid { grid-template-columns: repeat(3, 1fr); }
+  .headline-grid .kpi:last-child { grid-column: auto; }
+  .headline-grid .kpi strong { font-size: 26px; }
+  .range-dates { display: inline; }
+  .label-wide { display: inline; }
+  .label-narrow { display: none; }
   .overall-grid { grid-template-columns: repeat(3, 1fr); }
   .target-main { grid-template-columns: repeat(3, 1fr); }
   .target-main strong { font-size: 20px; }
