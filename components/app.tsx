@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { AlertTriangle, CheckCircle2, CloudOff, History, Landmark, LayoutDashboard, Loader2, PencilLine, Plus, Settings, Wallet } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { money } from '../lib/ledger';
+import { money, periodOf, periodShortLabel, summarisePeriod, todayKL } from '../lib/ledger';
+import { profitFor } from '../lib/insights';
 import { createClient } from '../lib/supabase/client';
 import { supabaseRepo, type Repo } from '../lib/repo';
 import { useLedger, type SyncState } from '../lib/use-ledger';
@@ -88,6 +89,10 @@ export function App({ repo, email, userId }: { repo: Repo; email: string; userId
   const branch = ledger.branch!;
   const usable = ledger.branches.filter(b => !b.archived_at);
   const balance = ledger.days.at(-1)?.balance ?? branch.opening_balance_sen;
+  const currentPeriod = periodOf(todayKL());
+  const purchases = summarisePeriod(branch.opening_balance_sen, ledger.days, currentPeriod).purchases;
+  // Same figure as the Dashboard's "terkumpul": carried up to the current month.
+  const cumulative = profitFor(ledger.months, currentPeriod, branch).final;
   const branchPicker = usable.length > 1 ? (
     <select className="branch-select" aria-label="Pilih cawangan" value={branch.id} onChange={e => void ledger.switchBranch(e.target.value)}>
       {usable.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -102,6 +107,10 @@ export function App({ repo, email, userId }: { repo: Repo; email: string; userId
         <div className="side-balance">
           <span>Baki modal</span>
           <strong className={balance < 0 ? 'negative' : undefined}>{money(balance)}</strong>
+          <dl>
+            <div><dt>Belian {periodShortLabel(currentPeriod)}</dt><dd>{money(purchases)}</dd></div>
+            <div><dt>{cumulative < 0 ? 'Rugi' : 'Untung'} bersih terkumpul</dt><dd className={cumulative < 0 ? 'negative' : cumulative > 0 ? 'positive' : undefined}>{money(cumulative)}</dd></div>
+          </dl>
         </div>
         <button className="btn btn-primary side-add" onClick={() => go('harian')}><Plus size={17} /> Isi rekod hari ini</button>
         <nav className="side-nav" aria-label="Navigasi utama">

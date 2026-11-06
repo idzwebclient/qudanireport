@@ -436,6 +436,10 @@ input:disabled, textarea:disabled { background: var(--surface-2); color: var(--m
   .side-balance { display: flex; flex-direction: column; gap: 1px; padding: 12px; border-radius: 12px; background: var(--surface-2); min-width: 0; }
   .side-balance span { font-size: 12px; font-weight: 600; color: var(--muted); }
   .side-balance strong { font-size: 20px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .side-balance dl { display: grid; gap: 6px; margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--line); }
+  .side-balance dl div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .side-balance dt { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .side-balance dd { margin: 0; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .side-add { width: 100%; padding: 0 10px; font-size: 14px; }
   .side-foot .sync { padding: 0 10px; }
   .records thead { display: table-header-group; }
