@@ -1,20 +1,21 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, Info, Minus } from 'lucide-react';
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { buildDays, fillPeriod, money, periodLabel, periodOf, periodRange, periodShortLabel, shiftPeriod, summarisePeriod, todayKL, type Day } from '../lib/ledger';
-import { changeRatio, firstDays, monthlyTrend, netTarget, overallPerformance, periodStats, profitFor, quarterPeriods, rangeSummary, yearPeriods, type Insight } from '../lib/insights';
+import { changeRatio, firstDays, monthlyTrend, netTarget, periodStats, profitFor, quarterPeriods, rangeSummary, yearPeriods, type Insight } from '../lib/insights';
 import type { Branch, Repo } from '../lib/repo';
 import type { useLedger } from '../lib/use-ledger';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { PeriodNav } from './period-nav';
 
-const COLOR = { main: '#0b8a5f', second: '#c8650a', third: '#5b6fd6', grid: '#ececec', axis: '#6b7280' };
+const COLOR = { main: '#0b8a5f', second: '#c8650a', third: '#5b6fd6', fourth: '#c03b6e', fifth: '#1f2937', grid: '#ececec', axis: '#6b7280' };
+const TREND_LINES = [['Belian', COLOR.main], ['Untung kasar', COLOR.third], ['Kos marketing', COLOR.second], ['OPEX', COLOR.fourth], ['Untung bersih', COLOR.fifth]] as const;
 const axis = { tickLine: false, axisLine: false, tick: { fontSize: 12, fill: COLOR.axis } };
 const MARGIN = { top: 6, right: 4, left: -8, bottom: 0 };
 const TONE_ICON = { good: CheckCircle2, warn: AlertTriangle, info: Info };
 const RECOVERY_KEY = 'rekod:target-recovery-months';
-const VIEWS = [['ringkasan', 'Ringkasan'], ['analisis', 'Analisis'], ['opex', 'OPEX'], ['modal', 'Modal']] as const;
+const VIEWS = [['ringkasan', 'Ringkasan'], ['prestasi', 'Prestasi'], ['opex', 'OPEX']] as const;
 type View = (typeof VIEWS)[number][0];
 const RANGES = [['month', '1 Bulan'], ['q1', 'Q1'], ['q2', 'Q2'], ['q3', 'Q3'], ['q4', 'Q4'], ['year', 'Setahun']] as const;
 type Range = (typeof RANGES)[number][0];
@@ -70,7 +71,7 @@ function Bars({ data, dataKey, title, color, syncId, xKey = 'name' }: { data: ob
   );
 }
 
-type BranchRow = { branch: Branch; balance: number; purchases: number };
+type BranchDays = { branch: Branch; days: Day[] };
 
 export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
   ledger: ReturnType<typeof useLedger>;
@@ -82,6 +83,7 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
   const today = todayKL();
   const [period, setPeriod] = useState(() => periodOf(today));
   const [view, setView] = useState<View>('ringkasan');
+  const [trendKey, setTrendKey] = useState<(typeof TREND_LINES)[number][0]>('Belian');
   const [range, setRange] = useState<Range>('month');
   const [year, setYear] = useState(() => Number(periodOf(today).slice(0, 4)));
   const [recovery, setRecovery] = useState(() => {
@@ -91,7 +93,7 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
       return 6;
     }
   });
-  const [branchRows, setBranchRows] = useState<BranchRow[]>([]);
+  const [branchDays, setBranchDays] = useState<BranchDays[]>([]);
   const usable = ledger.branches.filter(b => !b.archived_at);
 
   const opening = branch.opening_balance_sen;
@@ -104,7 +106,7 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
   const rangeLabel = isMonth ? periodLabel(period) : `${name} ${quarter ? year : ''} · ${periodLabel(selected[0]).split(' – ')[0]} ${periodRange(selected[0]).start.slice(0, 4)} – ${periodLabel(selected.at(-1)!).split(' – ')[1]}`;
 
   const columns: Column[] = isMonth
-    ? [shiftPeriod(period, -2), shiftPeriod(period, -1), period].map(p => ({ key: p, label: periodShortLabel(p), periods: [p] }))
+    ? [{ key: period, label: periodShortLabel(period), periods: [period] }]
     : quarter
       ? [...selected.map(p => ({ key: p, label: periodShortLabel(p), periods: [p] })), { key: 'total', label: `Jumlah ${name}`, periods: selected, total: true }]
       : [...[1, 2, 3, 4].map(q => ({ key: `q${q}`, label: `Q${q}`, periods: quarterPeriods(year, q) })), { key: 'total', label: `Jumlah ${year}`, periods: selected, total: true }];
@@ -123,7 +125,7 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
   const trend = monthlyTrend(opening, ledger.days, ledger.months, today);
   const profit = profitOf(period);
   const target = netTarget({ trend, period, carried: profit.carried, recoveryMonths: recovery, stats: nowStats, shiftPeriod });
-  const chartPeriods = isMonth ? columns.map(c => c.key) : selected.filter(p => p <= periodOf(today));
+  const chartPeriods = isMonth ? [period] : selected.filter(p => p <= periodOf(today));
   const latest = [...chartPeriods].reverse().map(p => trend.find(r => r.period === p)).find(Boolean);
 
   function chooseRecovery(value: number) {
@@ -149,13 +151,21 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
     { label: 'Terkumpul', value: p => (sumOf(p).started ? sumOf(p).final : null), before: sumOf(previousAll).final, strong: true },
   ];
 
-  const chart = chartPeriods.map(key => ({
-    name: periodShortLabel(key),
-    Belian: sumOf([key]).purchases / 100,
-    'Kos marketing': sumOf([key]).marketing / 100,
-    'Untung kasar': sumOf([key]).gross / 100,
-  }));
-  const overall = overallPerformance(trend.filter(r => isMonth || selected.includes(r.period)));
+  const firstPeriod = ledger.days[0] ? periodOf(ledger.days[0].date) : null;
+  // A month not yet entered in Bulanan is left blank, so lines stop rather than fall to zero.
+  const chart = chartPeriods.map(key => {
+    const r = sumOf([key]);
+    const filled = (sen: number) => (r.filledMonths ? sen / 100 : null);
+    const recorded = Boolean(firstPeriod && key >= firstPeriod);
+    return { name: periodShortLabel(key), Belian: recorded ? r.purchases / 100 : null, 'Kos marketing': filled(r.marketing), 'Untung kasar': filled(r.gross), OPEX: filled(r.opex), 'Untung bersih': filled(r.own) };
+  });
+  // A line needs two months, so a month with no neighbour gets a dot or it would not show at all.
+  const lonelyDot = ({ cx, cy, index, stroke }: { cx?: number; cy?: number; index?: number; stroke?: string }) => {
+    const filled = (i: number) => chart[i]?.[trendKey] != null;
+    const i = index ?? 0;
+    if (cx == null || cy == null || !filled(i) || filled(i - 1) || filled(i + 1)) return <g key={i} />;
+    return <circle key={i} cx={cx} cy={cy} r={4} fill={stroke} />;
+  };
 
   const opexItems = (p: string) => ledger.months.find(m => m.period === p)?.opex ?? [];
   const opexTotal = (periods: string[], itemName: string) => periods.flatMap(opexItems).filter(o => o.label.trim() === itemName).reduce((sum, o) => sum + o.amount_sen, 0);
@@ -167,18 +177,22 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
   const filledDays = selected.flatMap(p => fillPeriod(opening, ledger.days, p, today));
   const totalOut = now.purchases + now.costs + now.otherCosts + now.returned + now.passed;
 
-  const branchKey = usable.map(b => b.id).join() + selected.join() + ledger.days.at(-1)?.balance;
+  // Every branch is loaded once per data change; switching range only recounts what is already here.
+  const branchKey = usable.map(b => `${b.id}:${b.opening_balance_sen}:${b.opening_date}`).join() + ledger.days.at(-1)?.balance;
   useEffect(() => {
     if (usable.length < 2 || !ledger.online) return;
     let live = true;
-    Promise.all(usable.map(async b => {
-      const days: Day[] = buildDays(b.opening_balance_sen, await repo.listTransactions(b.id), b.opening_date);
-      return { branch: b, balance: days.at(-1)?.balance ?? b.opening_balance_sen, purchases: selected.reduce((total, p) => total + summarisePeriod(b.opening_balance_sen, days, p).purchases, 0) };
-    })).then(list => { if (live) setBranchRows(list); }).catch(() => {});
+    Promise.all(usable.map(async b => ({ branch: b, days: buildDays(b.opening_balance_sen, await repo.listTransactions(b.id), b.opening_date) })))
+      .then(list => { if (live) setBranchDays(list); }).catch(() => {});
     return () => { live = false; };
     // branchKey stands in for `usable`, which is a new array on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchKey, repo, ledger.online]);
+  const branchRows = branchDays.map(({ branch: b, days }) => ({
+    branch: b,
+    balance: days.at(-1)?.balance ?? b.opening_balance_sen,
+    purchases: selected.reduce((total, p) => total + summarisePeriod(b.opening_balance_sen, days, p).purchases, 0),
+  }));
 
   const targetNote = (): Insight | null => {
     if (!target) return null;
@@ -273,7 +287,7 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
           </section>}
 
           <section className="card card-scroll">
-            <h2 className="card-title">{isMonth ? 'Perbandingan 3 bulan' : `Perbandingan ${name}`}</h2>
+            <h2 className="card-title">{`Perbandingan ${name}`}</h2>
             <table className="compare-table compare-main">
               <thead><tr><th />{columns.map(c => <th key={c.key}>{c.label}</th>)}<th>Beza {name} vs {previousName}</th><th>%</th></tr></thead>
               <tbody>
@@ -303,52 +317,9 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
         </>
       )}
 
-      {view === 'analisis' && (
-        <>
-          <section className="card stack">
-            <div>
-              <h2 className="card-title">Marketing vs belian</h2>
-              <p className="muted">Bila marketing naik, adakah belian ikut naik?</p>
-            </div>
-            {latest?.marketingVerdict ? <Note item={{ ...latest.marketingVerdict, text: `${periodShortLabel(latest.period)}: ${latest.marketingVerdict.text}` }} /> : <p className="muted">Perlu dua bulan lengkap untuk dibanding.</p>}
-            <div className="mini-grid">
-              <Bars data={chart} dataKey="Kos marketing" title="Kos marketing (RM)" color={COLOR.second} syncId="marketing" />
-              <Bars data={chart} dataKey="Belian" title="Belian (RM)" color={COLOR.main} syncId="marketing" />
-            </div>
-          </section>
-
-          <section className="card stack">
-            <div>
-              <h2 className="card-title">Belian vs untung kasar</h2>
-              <p className="muted">Bila belian naik, adakah untung kasar ikut naik?</p>
-            </div>
-            {latest?.grossVerdict ? <Note item={{ ...latest.grossVerdict, text: `${periodShortLabel(latest.period)}: ${latest.grossVerdict.text}` }} /> : <p className="muted">Perlu dua bulan lengkap untuk dibanding.</p>}
-            <div className="mini-grid">
-              <Bars data={chart} dataKey="Belian" title="Belian (RM)" color={COLOR.main} syncId="gross" />
-              <Bars data={chart} dataKey="Untung kasar" title="Untung kasar (RM)" color={COLOR.third} syncId="gross" />
-            </div>
-          </section>
-
-          <section className="card stack">
-            <div>
-              <h2 className="card-title">Prestasi keseluruhan</h2>
-              <p className="muted">{overall.months ? `${overall.months} bulan lengkap, ${periodShortLabel(overall.first)} – ${periodShortLabel(overall.last)}${isMonth ? ', semua data' : ''}. Tanpa untung / rugi permulaan.` : 'Belum ada bulan lengkap.'}</p>
-            </div>
-            <div className="stat-row overall-grid">
-              <div><span>Jumlah belian</span><b>{money(overall.purchases)}</b></div>
-              <div><span>Jumlah untung kasar</span><b>{money(overall.gross)}</b></div>
-              <div><span>Jumlah marketing</span><b>{money(overall.marketing)}</b></div>
-              <div><span>Jumlah OPEX</span><b>{money(overall.opex)}</b></div>
-              <div><span>{overall.net < 0 ? 'Jumlah rugi' : 'Jumlah untung'}</span><b className={overall.net < 0 ? 'negative' : undefined}>{money(overall.net)}</b></div>
-              <div><span>Margin purata</span><b>{percentOf(overall.margin)}</b></div>
-            </div>
-          </section>
-        </>
-      )}
-
       {view === 'opex' && (
         <section className="card card-scroll">
-          <h2 className="card-title">OPEX {isMonth ? '3 bulan' : name}</h2>
+          <h2 className="card-title">OPEX {name}</h2>
           {opexNames.length ? (
             <table className="compare-table compare-main opex-table">
               <thead><tr><th>Item</th><th aria-hidden="true" />{columns.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead>
@@ -371,8 +342,81 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
         </section>
       )}
 
-      {view === 'modal' && (
+      {view === 'prestasi' && (
         <>
+          <div className="kpi-grid">
+            {([
+              ['Belian', now.purchases, like.purchases, true],
+              ['Untung kasar', now.gross, previousFilled.gross, false],
+              ['Kos marketing', now.marketing, previousFilled.marketing, false],
+              ['OPEX', now.opex, previousFilled.opex, false],
+              [now.filledMonths && now.own < 0 ? 'Rugi bersih' : 'Untung bersih', now.own, previousFilled.own, false],
+            ] as const).map(([label, value, before, daily]) => (
+              <div className="kpi" key={label}>
+                <span>{label} {name}</span>
+                <strong className={value < 0 ? 'negative' : undefined}>{daily || now.filledMonths ? money(value) : 'Belum isi'}</strong>
+                {daily || now.filledMonths
+                  ? <Delta now={value} before={before} label={daily && isMonth && nowStats.inProgress ? `${nowStats.elapsed} hari pertama ${previousName}` : previousName} />
+                  : <button className="link-btn" onClick={onMonth}>Isi di Bulanan</button>}
+              </div>
+            ))}
+          </div>
+          {!isMonth && now.filledMonths > 0 && now.filledMonths < selected.length && <p className="muted">Untung, marketing dan OPEX: {now.filledMonths} daripada {selected.length} bulan diisi.</p>}
+
+          {isMonth ? (
+            <section className="card stack">
+              <Bars data={filledDays.map(d => ({ day: shortDay(d.date), Belian: d.purchases / 100 }))} dataKey="Belian" xKey="day" title="Belian setiap hari (RM)" color={COLOR.main} />
+              {now.filledMonths ? (
+                <div className="mini-grid">
+                  <Bars data={[
+                    { name: 'Kasar', RM: now.gross / 100 },
+                    { name: 'Marketing', RM: -now.marketing / 100 },
+                    { name: 'OPEX', RM: -now.opex / 100 },
+                    { name: 'Bersih', RM: now.own / 100 },
+                  ]} dataKey="RM" title="Untung kasar ke untung bersih (RM)" color={COLOR.third} />
+                  <Bars data={opexNames.map(item => ({ name: item, OPEX: opexTotal([period], item) / 100 })).filter(r => r.OPEX)} dataKey="OPEX" title="OPEX ikut item (RM)" color={COLOR.second} />
+                </div>
+              ) : <p className="muted">Graf untung, marketing dan OPEX keluar selepas {name} diisi di Bulanan.</p>}
+            </section>
+          ) : (
+            <section className="card stack">
+              <div className="segmented trend-tabs" role="group" aria-label="Metrik graf">
+                {TREND_LINES.map(([key]) => <button key={key} aria-pressed={trendKey === key} onClick={() => setTrendKey(key)}>{key}</button>)}
+              </div>
+              <figure className="mini-chart">
+                <figcaption>{trendKey} setiap bulan (RM)</figcaption>
+                <div className="trend-box">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chart} margin={MARGIN}>
+                      <CartesianGrid stroke={COLOR.grid} vertical={false} />
+                      <XAxis dataKey="name" {...axis} />
+                      <YAxis tickFormatter={axisMoney} {...axis} width={46} />
+                      <ReferenceLine y={0} stroke={COLOR.axis} strokeOpacity={0.4} />
+                      <Tooltip formatter={tooltipMoney} />
+                      <Area isAnimationActive={false} type="linear" dataKey={trendKey} stroke={TREND_LINES.find(([k]) => k === trendKey)![1]} strokeWidth={2} fill={TREND_LINES.find(([k]) => k === trendKey)![1]} fillOpacity={0.1} dot={lonelyDot} activeDot={{ r: 4 }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </figure>
+            </section>
+          )}
+
+          <section className="card stack">
+            <div>
+              <h2 className="card-title">Ulasan {name}</h2>
+              <p className="muted">Bila marketing atau belian naik, adakah yang lain ikut naik?</p>
+            </div>
+            {latest?.marketingVerdict || latest?.grossVerdict ? (
+              <>
+                {latest.marketingVerdict && <Note item={{ ...latest.marketingVerdict, text: `${periodShortLabel(latest.period)}: ${latest.marketingVerdict.text}` }} />}
+                {latest.grossVerdict && <Note item={{ ...latest.grossVerdict, text: `${periodShortLabel(latest.period)}: ${latest.grossVerdict.text}` }} />}
+              </>
+            ) : <p className="muted">Keluar bila bulan dalam {name} dah lengkap, diisi di Bulanan, dan ada bulan sebelumnya untuk dibanding.</p>}
+          </section>
+
+
+
+          <h2 className="section-title">Modal</h2>
           <div className="stat-row overall-grid">
             <div><span>Baki modal</span><b className={now.balance < 0 ? 'negative' : undefined}>{money(now.balance)}</b></div>
             <div><span>Modal awal {name}</span><b>{money(now.startBalance)}</b></div>
@@ -396,7 +440,6 @@ export function DashboardView({ ledger, branch, repo, onAdd, onMonth }: {
                 </ResponsiveContainer>
               </div>
             </figure>
-            <Bars data={filledDays.map(d => ({ day: shortDay(d.date), Belian: d.purchases / 100 }))} dataKey="Belian" xKey="day" title="Belian setiap hari (RM)" color={COLOR.main} />
           </section>
           {usable.length > 1 && (
             <section className="card card-scroll">

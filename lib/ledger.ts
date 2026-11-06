@@ -9,6 +9,8 @@ export type Txn = {
   description: string;
   counterparty: string;
   voided_at: string | null;
+  // Shared by a belian and the kos saved with it.
+  pair_id?: string | null;
 };
 
 export type Day = {
@@ -117,8 +119,31 @@ export function dayView(opening: number, days: Day[], date: string): Day {
   return { date, start: balance, capitalIn: 0, purchases: 0, costs: 0, otherCosts: 0, returned: 0, passed: 0, balance, txns: [] };
 }
 
+export type Pair = { key: string; purchase?: Txn; cost?: Txn };
+
+// Linked records pair by pair_id; older ones, saved before that existed, pair by their shared note, in order.
+export function pairPurchases(rows: Txn[]): Pair[] {
+  const costs = rows.filter(t => t.kind === 'cost');
+  const take = (match: (c: Txn) => boolean) => {
+    const i = costs.findIndex(match);
+    return i >= 0 ? costs.splice(i, 1)[0] : undefined;
+  };
+  const pairs: Pair[] = rows.filter(t => t.kind === 'purchase').map(purchase => ({
+    key: purchase.id,
+    purchase,
+    cost: purchase.pair_id
+      ? take(c => c.pair_id === purchase.pair_id)
+      : take(c => !c.pair_id && c.description === purchase.description),
+  }));
+  return [...pairs, ...costs.map(cost => ({ key: cost.id, cost }))];
+}
+
 export function summarisePeriod(opening: number, days: Day[], period: string) {
   const { start, end } = periodRange(period);
+  return summariseRange(opening, days, start, end);
+}
+
+export function summariseRange(opening: number, days: Day[], start: string, end: string) {
   const rows = days.filter(d => d.date >= start && d.date <= end);
   const startBalance = days.filter(d => d.date < start).at(-1)?.balance ?? opening;
   const sum = (key: 'capitalIn' | 'purchases' | 'costs' | 'otherCosts' | 'returned' | 'passed') => rows.reduce((total, r) => total + r[key], 0);

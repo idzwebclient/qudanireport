@@ -29,6 +29,12 @@ export interface Repo {
 
 const PAGE = 1000;
 
+// Keeps only the fields the app writes back, so server-managed columns are never sent on save.
+const toTxn = (row: Txn): Txn => ({
+  id: row.id, branch_id: row.branch_id, txn_date: row.txn_date, kind: row.kind, amount_sen: row.amount_sen,
+  description: row.description, counterparty: row.counterparty, voided_at: row.voided_at, pair_id: row.pair_id ?? null,
+});
+
 function check<T>(result: { data: T; error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message);
   return result.data;
@@ -59,17 +65,20 @@ export function supabaseRepo(db: SupabaseClient, userId: string): Repo {
       const all: Txn[] = [];
       // PostgREST caps a response at 1000 rows, so read in pages.
       for (let from = 0; ; from += PAGE) {
-        const page = check(await db.from('transactions')
-          .select('id, branch_id, txn_date, kind, amount_sen, description, counterparty, voided_at')
+        // `*` keeps reads working whether or not the pair_id migration has run yet.
+        const page = (check(await db.from('transactions')
+          .select('*')
           .eq('branch_id', branchId).is('voided_at', null)
           .order('txn_date').order('created_at').order('id')
-          .range(from, from + PAGE - 1)) as Txn[];
+          .range(from, from + PAGE - 1)) as Txn[]).map(toTxn);
         all.push(...page);
         if (page.length < PAGE) return all;
       }
     },
     async saveTransaction(txn) {
-      check(await db.from('transactions').upsert(txn, { onConflict: 'id' }));
+      // Unlinked records leave pair_id out, so they still save before the pair_id migration has run.
+      const { pair_id, ...rest } = txn;
+      check(await db.from('transactions').upsert(pair_id ? txn : rest, { onConflict: 'id' }));
     },
     async listMonths(branchId) {
       const [closings, items] = await Promise.all([

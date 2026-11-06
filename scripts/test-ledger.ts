@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { addDays, buildDays, dayView, fillPeriod, money, parseSen, periodCsv, periodLabel, periodOf, periodRange, rangeReport, report, shiftPeriod, summarisePeriod, todayKL, type Txn, type TxnKind } from '../lib/ledger.ts';
+import { addDays, buildDays, dayView, fillPeriod, money, parseSen, periodCsv, periodLabel, periodOf, periodRange, pairPurchases, rangeReport, report, shiftPeriod, summarisePeriod, summariseRange, todayKL, type Txn, type TxnKind } from '../lib/ledger.ts';
 
+import { createFlusher, type OutboxItem } from '../lib/outbox.ts';
 import { changeRatio, firstDays, monthlyTrend, netTarget, overallPerformance, periodStats, profitFor, quarterPeriods, rangeSummary, yearPeriods } from '../lib/insights.ts';
 
 const txn = (txn_date: string, kind: TxnKind, amount_sen: number, extra: Partial<Txn> = {}): Txn => ({
@@ -252,5 +253,58 @@ assert.ok(lastDay.includes('Modal Awal: RM2,000.00'), 'modal awal ialah baki seb
 assert.ok(!lastDay.includes('Hari ada rekod'));
 const none = rangeReport('Alor Setar', 849000, realDays, '2026-11-01', '2026-11-05');
 assert.ok(none.includes('*RM425.80*'), 'tiada rekod membawa baki');
+
+
+// Sejarah: any date range, carrying the balance from before it
+{
+  const days = buildDays(10000, [txn('2026-10-01', 'purchase', 1000), txn('2026-10-05', 'capital_in', 500), txn('2026-10-09', 'cost', 200)]);
+  const r = summariseRange(10000, days, '2026-10-02', '2026-10-09');
+  assert.equal(r.rows.length, 2);
+  assert.equal(r.startBalance, 9000, 'baki awal ialah baki sebelum tarikh Dari');
+  assert.equal(r.capitalIn, 500);
+  assert.equal(r.costs, 200);
+  assert.equal(r.balance, 9300);
+  assert.deepEqual(summariseRange(10000, days, '2026-11-01', '2026-11-05').balance, 9300, 'julat tanpa rekod membawa baki');
+}
+
+// Belian and kos pair by pair_id, and older records by their note
+{
+  const linkedP = txn('2026-10-01', 'purchase', 1000, { pair_id: 'p1', description: 'Emas' });
+  const legacyP = txn('2026-10-01', 'purchase', 2000, { description: 'Emas' });
+  const legacyC = txn('2026-10-01', 'cost', 20, { description: 'Emas' });
+  const linkedC = txn('2026-10-01', 'cost', 10, { pair_id: 'p1', description: 'Emas' });
+  const loneC = txn('2026-10-01', 'cost', 5, { description: 'Lain' });
+  const pairs = pairPurchases([linkedP, legacyP, legacyC, linkedC, loneC]);
+  assert.equal(pairs.find(p => p.purchase === linkedP)?.cost, linkedC, 'pair_id menang walaupun catatan sama');
+  assert.equal(pairs.find(p => p.purchase === legacyP)?.cost, legacyC, 'rekod lama dipadan ikut catatan');
+  assert.ok(pairs.some(p => !p.purchase && p.cost === loneC), 'kos tanpa pasangan berdiri sendiri');
+  assert.equal(pairs.length, 3);
+}
+
+// Offline queue: one flush at a time, and a newer edit queued mid-send is never dropped
+{
+  let box: OutboxItem[] = [];
+  const sent: number[] = [];
+  let release!: () => void;
+  const flush = createFlusher({
+    read: () => box,
+    write: next => { box = next; },
+    save: async t => {
+      if (t.amount_sen === 100) await new Promise<void>(r => { release = r; });
+      sent.push(t.amount_sen);
+    },
+    isNetworkError: () => false,
+  });
+  const v1 = txn('2026-10-01', 'purchase', 100);
+  box = [{ txn: v1 }];
+  const first = flush();
+  await new Promise(r => setTimeout(r, 0));
+  box = [{ txn: { ...v1, amount_sen: 200 } }];
+  const second = flush();
+  release();
+  await Promise.all([first, second]);
+  assert.deepEqual(sent, [100, 200], 'versi baru dihantar selepas versi lama');
+  assert.equal(box.length, 0);
+}
 
 console.log('✓ Kiraan baki, tempoh, report dan CSV lulus.');

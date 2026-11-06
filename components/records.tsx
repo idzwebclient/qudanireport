@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { ChevronRight, Download } from 'lucide-react';
-import { dateLabel, money, periodCsv, periodOf, periodRange, summarisePeriod, todayKL } from '../lib/ledger';
+import { dateLabel, money, periodCsv, periodOf, periodRange, summariseRange, todayKL } from '../lib/ledger';
 import type { Branch } from '../lib/repo';
 import type { useLedger } from '../lib/use-ledger';
 import { PeriodNav } from './period-nav';
@@ -12,12 +12,21 @@ export function RecordsView({ ledger, branch, onOpenDay }: {
   onOpenDay: (date: string) => void;
 }) {
   const [period, setPeriod] = useState(() => periodOf(todayKL()));
-  const summary = summarisePeriod(branch.opening_balance_sen, ledger.days, period);
+  const [range, setRange] = useState(() => periodRange(periodOf(todayKL())));
+  const { start, end } = range;
+  const validRange = Boolean(start && end && start <= end);
+  const fullPeriod = periodRange(period);
+  const isFullPeriod = start === fullPeriod.start && end === fullPeriod.end;
+  const summary = summariseRange(branch.opening_balance_sen, ledger.days, start, validRange ? end : start);
+
+  function changePeriod(next: string) {
+    setPeriod(next);
+    setRange(periodRange(next));
+  }
 
   const hasOther = summary.otherCosts > 0;
 
   function exportCsv() {
-    const { start, end } = periodRange(period);
     const url = URL.createObjectURL(new Blob([periodCsv(branch.name, summary.rows)], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
@@ -30,19 +39,24 @@ export function RecordsView({ ledger, branch, onOpenDay }: {
     <div className="stack">
       <div className="page-title"><div><h1>Sejarah</h1><p className="muted">Tekan satu hari untuk buka rekodnya.</p></div></div>
       <div className="page-head">
-        <PeriodNav period={period} onChange={setPeriod} />
-        <button className="btn" disabled={!summary.rows.length} onClick={exportCsv}><Download size={16} /> CSV</button>
+        <PeriodNav period={period} onChange={changePeriod} label={isFullPeriod ? undefined : 'Tarikh pilihan'} />
+        <button className="btn" disabled={!validRange || !summary.rows.length} onClick={exportCsv}><Download size={16} /> CSV</button>
       </div>
+      <div className="report-range">
+        <label className="field"><span>Dari</span><input type="date" value={start} min={branch.opening_date ?? undefined} max={end || undefined} onChange={e => setRange({ start: e.target.value, end })} /></label>
+        <label className="field"><span>Hingga</span><input type="date" value={end} min={start || branch.opening_date || undefined} onChange={e => setRange({ start, end: e.target.value })} /></label>
+      </div>
+      {!validRange && <div className="alert alert-error" role="alert">Tarikh Dari mesti sebelum atau sama dengan tarikh Hingga.</div>}
 
-      <div className="stat-row">
+      {validRange && <div className="stat-row">
         <div><span>Modal awal</span><b>{money(summary.startBalance)}</b></div>
         <div><span>Modal masuk</span><b>{money(summary.capitalIn)}</b></div>
         <div><span>Belian + kos</span><b>{money(summary.purchases + summary.costs + summary.otherCosts)}</b></div>
         <div><span>Baki akhir</span><b>{money(summary.balance)}</b></div>
-      </div>
+      </div>}
 
-      <section className="card card-flush">
-        {summary.rows.length ? (
+      {validRange && <section className="card card-flush">
+        {validRange && summary.rows.length ? (
           <table className="records">
             <thead>
               <tr>
@@ -81,7 +95,7 @@ export function RecordsView({ ledger, branch, onOpenDay }: {
             </tfoot>
           </table>
         ) : <p className="empty">Tiada rekod dalam tempoh ini.</p>}
-      </section>
+      </section>}
     </div>
   );
 }

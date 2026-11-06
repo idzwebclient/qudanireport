@@ -2,10 +2,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildDays, type Txn } from './ledger';
 import type { Branch, Month, OpexCategory, Repo } from './repo';
+import { createFlusher, type OutboxItem } from './outbox';
 
 type BranchData = { txns: Txn[]; months: Month[]; categories?: OpexCategory[] };
 type Snapshot = { branches: Branch[]; data: Record<string, BranchData>; activeId: string };
-type Outbox = { txn: Txn; failed?: string }[];
+type Outbox = OutboxItem[];
 
 export type SyncState = 'synced' | 'syncing' | 'offline' | 'pending' | 'failed';
 
@@ -64,17 +65,11 @@ export function useLedger(repo: Repo, userId: string) {
     write(outboxKey, next);
   }, [outboxKey]);
 
-  const flush = useCallback(async () => {
-    for (const item of outboxRef.current.filter(i => !i.failed)) {
-      try {
-        await repo.saveTransaction(item.txn);
-        commitOutbox(outboxRef.current.filter(i => i.txn.id !== item.txn.id));
-      } catch (error) {
-        if (isNetworkError(error)) return false;
-        commitOutbox(outboxRef.current.map(i => i.txn.id === item.txn.id ? { ...i, failed: (error as Error).message } : i));
-      }
-    }
-    return true;
+  // Made once and kept, so every caller shares the same one-at-a-time queue.
+  const flusherRef = useRef<(() => Promise<boolean>) | null>(null);
+  const flush = useCallback(() => {
+    flusherRef.current ??= createFlusher({ read: () => outboxRef.current, write: commitOutbox, save: txn => repo.saveTransaction(txn), isNetworkError });
+    return flusherRef.current();
   }, [repo, commitOutbox]);
 
   const refresh = useCallback(async () => {

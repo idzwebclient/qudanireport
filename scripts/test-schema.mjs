@@ -148,5 +148,9 @@ await refuses(as(A, `select public.remove_branch_member('${branch}', '${A}')`), 
 await refuses(as(C, `select * from public.list_branch_members('${branch}')`), /akses/);
 assert.equal((await as(B, `select * from public.list_branch_members('${branch}')`)).length, 2);
 
+// Belian and kos saved together share a pair_id
+await as(B, `insert into transactions (branch_id, txn_date, kind, amount_sen, pair_id) values ('${branch}', '2026-10-03', 'purchase', 100, '00000000-0000-0000-0000-0000000000e1'), ('${branch}', '2026-10-03', 'cost', 10, '00000000-0000-0000-0000-0000000000e1')`);
+assert.equal((await as(B, `select count(*)::int c from transactions where pair_id = '00000000-0000-0000-0000-0000000000e1'`))[0].c, 2, 'belian dan kos dipautkan');
+
 console.log('✓ Schema, RLS, kunci bulan, dan audit lulus.');
 await db.close();

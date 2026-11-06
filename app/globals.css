@@ -283,6 +283,10 @@ input:disabled, textarea:disabled { background: var(--surface-2); color: var(--m
 .verdict.verdict-good { background: var(--ok-soft); }
 .verdict.verdict-warn { background: var(--warn-soft); }
 .verdict-cell svg { vertical-align: -2px; }
+.trend-box { height: 260px; }
+.trend-tabs { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); }
+.trend-tabs button { min-height: 40px; font-size: 13px; }
+@media (min-width: 760px) { .trend-tabs { grid-template-columns: repeat(5, 1fr); } }
 .mini-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .mini-chart { margin: 0; min-width: 0; }
 .mini-chart figcaption { margin-bottom: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }

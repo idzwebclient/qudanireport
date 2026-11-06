@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, type FormEvent } from 'react';
 import { CheckCircle2, Lock, Pencil } from 'lucide-react';
-import { dayView, KIND_LABEL, longDateLabel, money, parseSen, periodOf, senToInput, todayKL, type Day, type Txn, type TxnKind } from '../lib/ledger';
+import { dayView, KIND_LABEL, longDateLabel, money, pairPurchases, parseSen, periodOf, senToInput, todayKL, type Day, type Pair, type Txn, type TxnKind } from '../lib/ledger';
 import type { Branch } from '../lib/repo';
 import type { useLedger } from '../lib/use-ledger';
 import { AmountInput } from './amount-input';
@@ -19,7 +19,7 @@ const isTransfer = (kind: TxnKind | EntryTab) => kind === 'capital_return' || ki
 const noteLabel = (kind: TxnKind | EntryTab) => (isTransfer(kind) ? 'Kepada siapa' : kind === 'other_cost' ? 'Detail' : 'Catatan (tak wajib)');
 const notePlaceholder = (kind: TxnKind | EntryTab) => (isTransfer(kind) ? 'Contoh: HQ' : kind === 'capital_in' ? 'Contoh: Dari HQ' : kind === 'other_cost' ? 'Contoh: Baiki kaunter' : 'Contoh: Emas 916');
 
-type Draft = { amount: string; cost?: string; note: string };
+type Draft = { amount: string; cost?: string; note: string; pairId?: string };
 type Drafts = Partial<Record<EntryTab, Draft>>;
 
 // Unsaved amounts survive switching record type, leaving the screen and reloading.
@@ -100,6 +100,75 @@ function EditForm({ txn, onSave, onDone }: { txn: Txn; onSave: (txn: Txn) => Pro
   );
 }
 
+function PairEditForm({ pair, branchId, date, onSave, onDone }: { pair: Pair; branchId: string; date: string; onSave: (txn: Txn) => Promise<void>; onDone: () => void }) {
+  const [purchase, setPurchase] = useState(senToInput(pair.purchase?.amount_sen ?? 0));
+  const [cost, setCost] = useState(senToInput(pair.cost?.amount_sen ?? 0));
+  const [note, setNote] = useState(pair.purchase?.description ?? pair.cost?.description ?? '');
+  const [busy, setBusy] = useState(false);
+  const [confirmVoid, setConfirmVoid] = useState(false);
+  const [error, setError] = useState('');
+
+  // Each part is its own record: changed, added, or removed when its amount is cleared.
+  // When both remain, they share one pair_id, which also links older records saved before it existed.
+  const part = (kind: 'purchase' | 'cost', existing: Txn | undefined, sen: number, voided: boolean, pairId: string | null): Txn | null => {
+    if (existing) {
+      if (voided || !sen) return { ...existing, voided_at: new Date().toISOString() };
+      return { ...existing, amount_sen: sen, description: note.trim(), pair_id: pairId ?? existing.pair_id ?? null };
+    }
+    if (voided || !sen) return null;
+    return { id: crypto.randomUUID(), branch_id: branchId, txn_date: date, kind, amount_sen: sen, description: note.trim(), counterparty: '', voided_at: null, pair_id: pairId };
+  };
+
+  async function persist(voided: boolean) {
+    const purchaseSen = purchase.trim() ? parseSen(purchase) : 0;
+    const costSen = cost.trim() ? parseSen(cost) : 0;
+    if (!voided) {
+      if (purchaseSen === null || costSen === null) return setError('Amaun tidak sah. Contoh: 150.50');
+      if (!purchaseSen && !costSen) return setError('Masukkan amaun belian atau kos, atau tekan Buang rekod.');
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const pairId = !voided && purchaseSen && costSen ? pair.purchase?.pair_id ?? pair.cost?.pair_id ?? crypto.randomUUID() : null;
+      for (const txn of [part('purchase', pair.purchase, purchaseSen ?? 0, voided, pairId), part('cost', pair.cost, costSen ?? 0, voided, pairId)]) {
+        if (txn) await onSave(txn);
+      }
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="txn-edit stack" onSubmit={e => { e.preventDefault(); void persist(false); }}>
+      <b>Ubah belian & kos</b>
+      <div className="amount-pair">
+        <AmountInput label="Amaun belian" value={purchase} onChange={setPurchase} />
+        <AmountInput label="Amaun kos" value={cost} onChange={setCost} />
+      </div>
+      <label className="field">
+        <span>{noteLabel('purchase')}</span>
+        <input maxLength={200} value={note} onChange={e => setNote(e.target.value)} placeholder={notePlaceholder('purchase')} />
+      </label>
+      {error && <div className="alert alert-error" role="alert">{error}</div>}
+      <button className="btn btn-primary" disabled={busy}>{busy ? 'Menyimpan…' : 'Simpan perubahan'}</button>
+      {confirmVoid ? (
+        <div className="confirm">
+          <span>Buang belian dan kos ini? Baki akan dikira semula.</span>
+          <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void persist(true)}>Ya, buang</button>
+          <button type="button" className="btn" onClick={() => setConfirmVoid(false)}>Tak jadi</button>
+        </div>
+      ) : (
+        <div className="form-secondary">
+          <button type="button" className="btn" onClick={onDone}>Batal</button>
+          <button type="button" className="btn btn-ghost-danger" onClick={() => setConfirmVoid(true)}>Buang rekod</button>
+        </div>
+      )}
+    </form>
+  );
+}
+
 const TAB_KINDS: Record<EntryTab, TxnKind[]> = {
   capital_in: ['capital_in'],
   purchase_cost: ['purchase', 'cost'],
@@ -108,9 +177,10 @@ const TAB_KINDS: Record<EntryTab, TxnKind[]> = {
   capital_pass: ['capital_pass'],
 };
 
-function SavedRecords({ tab, tabName, day, locked, onSave }: {
+function SavedRecords({ tab, tabName, branchId, day, locked, onSave }: {
   tab: EntryTab;
   tabName: string;
+  branchId: string;
   day: Day;
   locked: boolean;
   onSave: (txn: Txn) => Promise<void>;
@@ -122,7 +192,26 @@ function SavedRecords({ tab, tabName, day, locked, onSave }: {
   return (
     <section className="saved" aria-label={`${tabName} yang dah disimpan`}>
       <header><span>{tabName} dah disimpan</span><b>{money(total)}</b></header>
-      {rows.length ? (
+      {rows.length && tab === 'purchase_cost' ? (
+        <ul>
+          {pairPurchases(rows).map(pair => (
+            <li key={pair.key}>
+              {editingId === pair.key ? (
+                <PairEditForm pair={pair} branchId={branchId} date={day.date} onSave={onSave} onDone={() => setEditingId(null)} />
+              ) : (
+                <div className="saved-row">
+                  <span>
+                    <b>Belian</b>
+                    <strong>{money(pair.purchase?.amount_sen ?? 0)}</strong>
+                    <small>Kos {money(pair.cost?.amount_sen ?? 0)}{(pair.purchase ?? pair.cost)!.description ? ` · ${(pair.purchase ?? pair.cost)!.description}` : ''}</small>
+                  </span>
+                  {!locked && <button type="button" className="btn btn-small" onClick={() => setEditingId(pair.key)}><Pencil size={14} /> Ubah</button>}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : rows.length ? (
         <ul>
           {rows.map(txn => (
             <li key={txn.id}>
@@ -173,7 +262,7 @@ function EntryForm({ branchId, date, day, drafts, setDrafts, onSave, tab, setTab
     setMessage(null);
   }
 
-  const makeTxn = (kind: TxnKind, sen: number, note: string): Txn => ({
+  const makeTxn = (kind: TxnKind, sen: number, note: string, pairId: string | null = null): Txn => ({
     id: crypto.randomUUID(),
     branch_id: branchId,
     txn_date: date,
@@ -182,6 +271,7 @@ function EntryForm({ branchId, date, day, drafts, setDrafts, onSave, tab, setTab
     description: isTransfer(kind) ? '' : note.trim(),
     counterparty: isTransfer(kind) ? note.trim() : '',
     voided_at: null,
+    pair_id: pairId,
   });
 
   async function submit(e: FormEvent) {
@@ -208,12 +298,14 @@ function EntryForm({ branchId, date, day, drafts, setDrafts, onSave, tab, setTab
         const draft = drafts[id]!;
         if (id === 'purchase_cost') {
           const purchase = parseSen(draft.amount), cost = parseSen(draft.cost ?? '');
+          // Kept in the draft, so a kos retried after a failure still links to its belian.
+          const pairId = draft.pairId ?? (purchase && cost ? crypto.randomUUID() : null);
           if (purchase) {
-            await onSave(makeTxn('purchase', purchase, draft.note));
-            settle(id, { ...draft, amount: '' });
+            await onSave(makeTxn('purchase', purchase, draft.note, pairId));
+            settle(id, { ...draft, amount: '', pairId: pairId ?? undefined });
           }
           if (cost) {
-            await onSave(makeTxn('cost', cost, draft.note));
+            await onSave(makeTxn('cost', cost, draft.note, pairId));
             settle(id);
           } else if (remaining[id]) {
             remaining = { ...remaining };
@@ -250,7 +342,7 @@ function EntryForm({ branchId, date, day, drafts, setDrafts, onSave, tab, setTab
           );
         })}
       </div>
-      <SavedRecords key={tab} tab={tab} tabName={tabName(tab)} day={day} locked={locked} onSave={onSave} />
+      <SavedRecords key={tab} tab={tab} tabName={tabName(tab)} branchId={branchId} day={day} locked={locked} onSave={onSave} />
       {!locked && <form className="stack" onSubmit={submit}>
       <h3 className="add-title">Tambah {tabName(tab).toLowerCase()} baru</h3>
       {tab === 'purchase_cost' ? (
